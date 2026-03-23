@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Send, User, Bot, Loader2 } from "lucide-react";
 import { API_BASE_URL } from "@/config";
@@ -10,7 +10,7 @@ type Message = {
   content: string;
 };
 
-export default function DashboardPage() {
+function DashboardContent() {
   const [role, setRole] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -173,5 +173,17 @@ export default function DashboardPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen items-center justify-center bg-white">
+        <Loader2 size={32} className="animate-spin text-indigo-500" />
+      </div>
+    }>
+      <DashboardContent />
+    </Suspense>
   );
 }
