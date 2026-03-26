@@ -128,7 +128,7 @@ function DashboardContent() {
           {isFetchingHistory ? (
             <div className="flex justify-center items-center py-10 text-slate-500 gap-2">
               <Loader2 size={24} className="animate-spin text-indigo-500" />
-              <span>로당 중입니다 잠시만 기다려주세요.</span>
+              <span>로딩 중입니다 잠시만 기다려주세요.</span>
             </div>
           ) : (
             <>
