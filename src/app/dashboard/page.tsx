@@ -15,8 +15,9 @@ function DashboardContent() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isFetchingHistory, setIsFetchingHistory] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
+
   const searchParams = useSearchParams();
   const router = useRouter();
   const chatId = searchParams.get("chatId");
@@ -24,7 +25,7 @@ function DashboardContent() {
   useEffect(() => {
     const storedRole = localStorage.getItem("role");
     setRole(storedRole);
-    
+
     if (!chatId) {
       const newId = crypto.randomUUID();
       router.replace(`/dashboard?chatId=${newId}`);
@@ -34,6 +35,7 @@ function DashboardContent() {
   }, [chatId]);
 
   const fetchHistory = async (id: string, storedRole: string | null) => {
+    setIsFetchingHistory(true);
     try {
       const res = await fetch(`${API_BASE_URL}/chat/${id}/history`);
       if (res.ok) {
@@ -41,16 +43,18 @@ function DashboardContent() {
         if (data.history && data.history.length > 0) {
           setMessages(data.history);
         } else {
-          setMessages([{ 
-            role: "ai", 
-            content: storedRole === "admin" 
-              ? "Welcome, Administrator. You can manage documents in the sidebar and test the RAG performance here." 
-              : "Hello! I'm your AI assistant. I'm ready to answer questions based on the available knowledge base." 
+          setMessages([{
+            role: "ai",
+            content: storedRole === "admin"
+              ? "환영합니다, 관리자님. 사이드바에서 문서를 관리하고 RAG 성능을 테스트할 수 있습니다."
+              : "안녕하세요! AI 어시스턴트입니다. 등록된 지식 기반으로 질문에 답변할 준비가 되었습니다."
           }]);
         }
       }
-    } catch(e) {
+    } catch (e) {
       console.error(e);
+    } finally {
+      setIsFetchingHistory(false);
     }
   };
 
@@ -66,6 +70,21 @@ function DashboardContent() {
     if (!input.trim()) return;
 
     const userMessage = input;
+
+    // Save history if first user message
+    if (messages.length <= 1) {
+      const existingStr = localStorage.getItem("chatHistory");
+      let existing: any[] = [];
+      if (existingStr) {
+        try { existing = JSON.parse(existingStr); } catch (e) { }
+      }
+      if (!existing.find((c: any) => c.id === chatId)) {
+        const newHistory = [{ id: chatId, title: userMessage.slice(0, 30) }, ...existing];
+        localStorage.setItem("chatHistory", JSON.stringify(newHistory));
+        window.dispatchEvent(new Event('chatHistoryUpdated'));
+      }
+    }
+
     setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
     setInput("");
     setIsLoading(true);
@@ -85,10 +104,10 @@ function DashboardContent() {
         const data = await res.json();
         setMessages((prev) => [...prev, { role: "ai", content: data.response }]);
       } else {
-        setMessages((prev) => [...prev, { role: "ai", content: "Error: Unable to fetch response from the API." }]);
+        setMessages((prev) => [...prev, { role: "ai", content: "오류: API에서 응답을 가져올 수 없습니다." }]);
       }
     } catch (error) {
-       setMessages((prev) => [...prev, { role: "ai", content: "Error: Server connection failed." }]);
+      setMessages((prev) => [...prev, { role: "ai", content: "오류: 서버 연결에 실패했습니다." }]);
     } finally {
       setIsLoading(false);
     }
@@ -106,44 +125,52 @@ function DashboardContent() {
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 scroll-smooth">
         <div className="max-w-3xl mx-auto space-y-6">
-          {messages.map((msg, idx) => (
-            <div key={idx} className={`flex gap-4 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              {msg.role === "ai" && (
-                <div className="w-8 h-8 rounded-full bg-indigo-100 border border-indigo-200 flex items-center justify-center flex-shrink-0 mt-1">
-                  <Bot size={18} className="text-indigo-600" />
-                </div>
-              )}
-              
-              <div 
-                className={`max-w-[85%] rounded-2xl px-5 py-4 ${
-                  msg.role === "user" 
-                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20" 
-                    : "bg-slate-50 text-slate-800 border border-slate-100 shadow-sm"
-                }`}
-              >
-                <div className="prose prose-sm max-w-none whitespace-pre-wrap">
-                  {msg.content}
-                </div>
-              </div>
+          {isFetchingHistory ? (
+            <div className="flex justify-center items-center py-10 text-slate-500 gap-2">
+              <Loader2 size={24} className="animate-spin text-indigo-500" />
+              <span>로당 중입니다 잠시만 기다려주세요.</span>
+            </div>
+          ) : (
+            <>
+              {messages.map((msg, idx) => (
+                <div key={idx} className={`flex gap-4 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                  {msg.role === "ai" && (
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 border border-indigo-200 flex items-center justify-center flex-shrink-0 mt-1">
+                      <Bot size={18} className="text-indigo-600" />
+                    </div>
+                  )}
 
-              {msg.role === "user" && (
-                <div className="w-8 h-8 rounded-full bg-slate-200 border border-slate-300 flex items-center justify-center flex-shrink-0 mt-1">
-                  <User size={18} className="text-slate-600" />
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-5 py-4 ${msg.role === "user"
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
+                      : "bg-slate-50 text-slate-800 border border-slate-100 shadow-sm"
+                      }`}
+                  >
+                    <div className="prose prose-sm max-w-none whitespace-pre-wrap">
+                      {msg.content}
+                    </div>
+                  </div>
+
+                  {msg.role === "user" && (
+                    <div className="w-8 h-8 rounded-full bg-slate-200 border border-slate-300 flex items-center justify-center flex-shrink-0 mt-1">
+                      <User size={18} className="text-slate-600" />
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {isLoading && (
+                <div className="flex gap-4 justify-start">
+                  <div className="w-8 h-8 rounded-full bg-indigo-100 border border-indigo-200 flex items-center justify-center flex-shrink-0 mt-1">
+                    <Bot size={18} className="text-indigo-600" />
+                  </div>
+                  <div className="bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 shadow-sm flex items-center gap-2 text-slate-500">
+                    <Loader2 size={16} className="animate-spin text-indigo-500" />
+                    응답 생성 중...
+                  </div>
                 </div>
               )}
-            </div>
-          ))}
-          
-          {isLoading && (
-            <div className="flex gap-4 justify-start">
-               <div className="w-8 h-8 rounded-full bg-indigo-100 border border-indigo-200 flex items-center justify-center flex-shrink-0 mt-1">
-                  <Bot size={18} className="text-indigo-600" />
-                </div>
-                <div className="bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 shadow-sm flex items-center gap-2 text-slate-500">
-                  <Loader2 size={16} className="animate-spin text-indigo-500" />
-                  Generating response...
-                </div>
-            </div>
+            </>
           )}
           <div ref={messagesEndRef} />
         </div>
@@ -156,7 +183,7 @@ function DashboardContent() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask a question about your documents..."
+            placeholder="문서에 대해 질문해보세요..."
             className="flex-1 bg-transparent pl-4 pr-2 py-4 focus:outline-none resize-none text-slate-800 placeholder-slate-400 min-h-[56px] max-h-[200px]"
             rows={1}
           />
@@ -169,7 +196,7 @@ function DashboardContent() {
           </button>
         </div>
         <p className="text-center text-xs text-slate-400 mt-2">
-          AI generated content may be inaccurate. Verify facts using original documents.
+          AI가 생성한 내용은 부정확할 수 있습니다. 원본 문서를 통해 사실을 확인하세요.
         </p>
       </div>
     </div>

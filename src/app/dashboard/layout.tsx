@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, FileText, Menu, X, LogOut, CheckCircle, List, Trash2 } from "lucide-react";
+import { Upload, FileText, Menu, X, LogOut, CheckCircle, List, Trash2, MessageSquare } from "lucide-react";
 import { API_BASE_URL } from "@/config";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -12,6 +12,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [files, setFiles] = useState<{ id: string; name: string }[]>([]);
+  const [chatHistory, setChatHistory] = useState<{id: string, title: string}[]>([]);
   const [selectedFile, setSelectedFile] = useState<{ id: string; name: string } | null>(null);
   const [fileUrl, setFileUrl] = useState<string | null>(null);
 
@@ -61,6 +62,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   };
 
+  const loadHistory = () => {
+    try {
+      const history = JSON.parse(localStorage.getItem("chatHistory") || "[]");
+      setChatHistory(history);
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    loadHistory();
+    window.addEventListener("chatHistoryUpdated", loadHistory);
+    return () => window.removeEventListener("chatHistoryUpdated", loadHistory);
+  }, []);
+
+  const handleDeleteChat = (id: string) => {
+    if (!confirm("이 대화를 삭제하시겠습니까?")) return;
+    const history = JSON.parse(localStorage.getItem("chatHistory") || "[]");
+    const newHistory = history.filter((c: any) => c.id !== id);
+    localStorage.setItem("chatHistory", JSON.stringify(newHistory));
+    setChatHistory(newHistory);
+    
+    // If current chat is deleted, redirect to start a new chat
+    const currentChatId = new URLSearchParams(window.location.search).get("chatId");
+    if (currentChatId === id) {
+      router.push("/dashboard");
+    }
+  };
+
   useEffect(() => {
     const token = localStorage.getItem("token");
     const storedRole = localStorage.getItem("role");
@@ -68,12 +96,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setRole(storedRole);
       if (storedRole === "admin") {
         fetchFiles();
-      } else {
-        setIsSidebarOpen(false); // Default sidebar closed for non-admin
       }
     } else {
       setRole(null);
-      setIsSidebarOpen(false);
     }
   }, [router]);
 
@@ -119,15 +144,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       });
 
       if (res.ok) {
-        setUploadStatus("Upload Success!");
+        setUploadStatus("업로드 성공!");
         fetchFiles();
         setTimeout(() => setUploadStatus(null), 3000);
       } else {
-        setUploadStatus("Upload Failed.");
+        setUploadStatus("업로드 실패.");
         setTimeout(() => setUploadStatus(null), 3000);
       }
     } catch (error) {
-      setUploadStatus("Upload Error.");
+      setUploadStatus("업로드 오류.");
       setTimeout(() => setUploadStatus(null), 3000);
     } finally {
       setIsUploading(false);
@@ -138,47 +163,84 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden text-slate-800 font-sans">
-      {/* Sidebar - only fully functional for Admin */}
-      {isAdmin && (
-        <aside
-          className={`${isSidebarOpen ? "w-80 translate-x-0" : "w-0 -translate-x-full"
-            } transition-all duration-300 ease-in-out border-r border-slate-200 bg-white flex flex-col shadow-sm flex-shrink-0 z-20`}
-        >
-          <div className="p-6 border-b border-slate-100 flex items-center justify-between min-w-[320px]">
-            <h2 className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent flex items-center gap-2">
-              <FileText className="text-indigo-600" size={24} />
-              Admin Portal
-            </h2>
-          </div>
+      {/* Sidebar - accessible to all users for chat history */}
+      <aside
+        className={`${isSidebarOpen ? "w-80 translate-x-0" : "w-0 -translate-x-full"
+          } transition-all duration-300 ease-in-out border-r border-slate-200 bg-white flex flex-col shadow-sm flex-shrink-0 z-20`}
+      >
+        <div className="p-6 border-b border-slate-100 flex items-center justify-between min-w-[320px]">
+          <h2 className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent flex items-center gap-2">
+            {isAdmin ? (
+              <>
+                <FileText className="text-indigo-600" size={24} />
+                관리자 포털
+              </>
+            ) : (
+              <>
+                <MessageSquare className="text-indigo-600" size={24} />
+                dorag
+              </>
+            )}
+          </h2>
+        </div>
 
-          <div className="flex-1 p-6 flex flex-col gap-6 overflow-y-auto min-w-[320px]">
-            {/* Upload Area */}
-            <div className="bg-slate-50 border border-slate-200 border-dashed rounded-xl p-6 flex flex-col items-center justify-center text-center transition-colors hover:bg-slate-100 hover:border-indigo-300">
-              <Upload size={40} className="text-indigo-400 mb-3" />
-              <h3 className="font-semibold text-slate-700 mb-1">Upload Source Context</h3>
-              <p className="text-xs text-slate-500 mb-4 max-w-[200px]">PDF or TXT documents to ground AI responses.</p>
-              <label className="relative cursor-pointer bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-indigo-600/20">
-                {isUploading ? "Uploading..." : "Select File"}
-                <input
-                  type="file"
-                  className="hidden"
-                  accept=".pdf,.txt"
-                  onChange={handleFileUpload}
-                  disabled={isUploading}
-                />
-              </label>
-              {uploadStatus && (
-                <div className={`mt-3 text-xs flex items-center gap-1 ${uploadStatus.includes("Success") ? "text-emerald-600" : "text-amber-600"}`}>
-                  {uploadStatus.includes("Success") && <CheckCircle size={12} />}
-                  {uploadStatus}
-                </div>
+        <div className="flex-1 p-6 flex flex-col gap-6 overflow-y-auto min-w-[320px]">
+          {/* Recent Chats Section */}
+          <div className="flex-1">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <MessageSquare size={14} /> 최근 대화 목록
+            </h3>
+            <div className="space-y-2">
+              {chatHistory.length > 0 ? (
+                chatHistory.map((chat) => (
+                  <div 
+                    key={chat.id} 
+                    className="group relative cursor-pointer text-sm text-slate-600 bg-slate-50 rounded-lg p-3 border border-slate-100 flex justify-between items-center hover:bg-slate-100 transition-colors"
+                  >
+                    <span className="truncate flex-1" onClick={() => router.push(`/dashboard?chatId=${chat.id}`)}>{chat.title}</span>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleDeleteChat(chat.id); }}
+                      className="text-slate-400 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity ml-2 shrink-0"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div className="text-sm text-slate-400 italic">대화 기록이 없습니다.</div>
               )}
             </div>
+          </div>
 
-            <div className="flex-1">
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <List size={14} /> Uploaded Files
-              </h3>
+          {isAdmin && (
+            <>
+              {/* Upload Area */}
+              <div className="bg-slate-50 border border-slate-200 border-dashed rounded-xl p-6 flex flex-col items-center justify-center text-center transition-colors hover:bg-slate-100 hover:border-indigo-300">
+                <Upload size={40} className="text-indigo-400 mb-3" />
+                <h3 className="font-semibold text-slate-700 mb-1">컨텍스트 소스 업로드</h3>
+                <p className="text-xs text-slate-500 mb-4 max-w-[200px]">AI 응답의 기반이 될 PDF 또는 TXT 문서.</p>
+                <label className="relative cursor-pointer bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-indigo-600/20">
+                  {isUploading ? "업로드 중..." : "파일 선택"}
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.txt"
+                    onChange={handleFileUpload}
+                    disabled={isUploading}
+                  />
+                </label>
+                {uploadStatus && (
+                  <div className={`mt-3 text-xs flex items-center gap-1 ${uploadStatus.includes("성공") ? "text-emerald-600" : "text-amber-600"}`}>
+                    {uploadStatus.includes("성공") && <CheckCircle size={12} />}
+                    {uploadStatus}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1">
+                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <List size={14} /> 업로드된 파일
+                </h3>
               <div className="space-y-2">
                 {files.length > 0 ? (
                   files.map((file) => (
@@ -198,30 +260,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     </div>
                   ))
                 ) : (
-                  <div className="text-sm text-slate-400 italic">No files uploaded yet.</div>
+                  <div className="text-sm text-slate-400 italic">아직 업로드된 파일이 없습니다.</div>
                 )}
               </div>
             </div>
-          </div>
+          </>
+          )}
+        </div>
 
+        {role && (
           <div className="p-4 border-t border-slate-100 min-w-[320px]">
             <button
               onClick={handleLogout}
               className="w-full flex items-center justify-center gap-2 py-2 text-sm text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
             >
               <LogOut size={16} />
-              Sign Out
+              로그아웃
             </button>
           </div>
-        </aside>
-      )}
+        )}
+      </aside>
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-w-0 bg-white relative">
         <header className="h-16 border-b border-slate-200 bg-white/80 backdrop-blur-md flex items-center justify-between px-4 absolute top-0 left-0 w-full z-10">
           <div className="flex items-center gap-4">
             <h1 className="text-lg font-semibold text-slate-800">
-              {isAdmin ? "Knowledge Management" : "AI Assistant"}
+              {isAdmin ? "지식 관리" : "AI 어시스턴트"}
             </h1>
           </div>
           <div className="flex gap-2">
@@ -229,14 +294,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               onClick={() => { window.location.href = '/dashboard'; }}
               className="flex items-center gap-2 py-2 px-3 text-sm text-indigo-600 border border-indigo-200 hover:bg-indigo-50 rounded-lg transition-colors bg-white font-medium"
             >
-              New Chat
+              새 채팅
             </button>
             {!role && (
               <button
                 onClick={() => router.push("/login")}
                 className="flex items-center gap-2 py-2 px-3 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
               >
-                Login
+                로그인
               </button>
             )}
             {role && !isAdmin && (
@@ -245,7 +310,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 className="flex items-center gap-2 py-2 px-3 text-sm text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
               >
                 <LogOut size={16} />
-                Sign Out
+                로그아웃
               </button>
             )}
           </div>
